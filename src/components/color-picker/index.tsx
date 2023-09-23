@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   drawHue,
   drawMain,
-  getHue,
-  getRgbFromCanvas,
+  hexToRgb,
   hsvToRgb,
   minmax,
   rgbToHex,
@@ -27,8 +26,8 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
   color,
   children,
 }) => {
-  const [localColor, setLocalColor] = useState<RGB>([255, 255, 255]);
-  const [hue, setHue] = useState<RGB>([255, 0, 0]);
+  const [hsv, setHsv] = useState<HSV>([0, 0, 100]);
+  const [rgb, setRgb] = useState<RGB>([255, 255, 255]);
   const [hueSelectorX, setHueSelectorX] = useState(0);
   const [colorSelector, setColorSelector] = useState({ x: 0, y: 0 });
 
@@ -36,17 +35,14 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
 
   useEffect(() => {
     if (color && firstTime.current) {
-      setLocalColor(color);
-
       const hsv = rgbToHsv(color);
-
       setColorSelector({
         x: (hsv[1] / 100) * CANVAS_WIDTH,
         y: (1 - hsv[2] / 100) * CANVAS_HEIGHT,
       });
-
-      setHueSelectorX((1 - hsv[0] / 360) * HUE_WIDTH);
-      setHue(hsvToRgb([hsv[0], 100, 100]));
+      setHueSelectorX((hsv[0] / 360) * HUE_WIDTH);
+      setHsv(hsv);
+      setRgb(color);
 
       firstTime.current = false;
     }
@@ -57,29 +53,24 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
       value={{
         colorSelector,
         hueSelectorX,
-        color: localColor,
-        hueAsRgb: hue,
+        hsv,
+        rgb,
         onChangeColorSelector: (coord) => setColorSelector(coord),
-        onChangeMainColor: (color) => {
-          setLocalColor(color);
+        onChangeMainColor: (hsv) => {
+          const rgb = hsvToRgb(hsv);
+          setHsv(hsv);
+          setRgb(rgb);
 
           if (onChange) {
-            onChange(color);
+            onChange(rgb);
           }
         },
-        onHueChange: (hueAsRgb, coordX) => {
-          setHue(hueAsRgb);
+        onHueChange: (hsv, coordX) => {
+          setHsv(hsv);
           setHueSelectorX(coordX);
 
-          const rgb = getRgbFromCanvas(
-            hueAsRgb,
-            colorSelector.x,
-            colorSelector.y,
-            CANVAS_WIDTH,
-            CANVAS_HEIGHT
-          );
-
-          setLocalColor(rgb);
+          const rgb = hsvToRgb(hsv);
+          setRgb(rgb);
 
           if (onChange) {
             onChange(rgb);
@@ -88,14 +79,13 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
         onChangeInput: (hsv, rgb) => {
           const [h, s, v] = hsv;
 
-          setLocalColor(rgb);
-
           setColorSelector({
             x: (s / 100) * CANVAS_WIDTH,
             y: (1 - v / 100) * CANVAS_HEIGHT,
           });
-          setHueSelectorX((1 - h / 360) * HUE_WIDTH);
-          setHue(hsvToRgb([h, 100, 100]));
+          setHueSelectorX((h / 360) * HUE_WIDTH);
+          setHsv(hsv);
+          setRgb(rgb);
 
           if (onChange) {
             onChange(rgb);
@@ -109,13 +99,8 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
 };
 
 export const Main = () => {
-  const {
-    color,
-    colorSelector,
-    hueAsRgb,
-    onChangeColorSelector,
-    onChangeMainColor,
-  } = useColor();
+  const { colorSelector, onChangeColorSelector, onChangeMainColor, hsv } =
+    useColor();
 
   const [isMouseDown, setMouseDown] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -125,9 +110,9 @@ export const Main = () => {
     const canvas = canvasRef.current;
 
     if (canvas) {
-      drawMain(canvas, hueAsRgb);
+      drawMain(canvas, hsvToRgb([hsv[0], 100, 100]));
     }
-  }, [hueAsRgb, colorSelector]);
+  }, [hsv, colorSelector]);
 
   useEffect(
     function colorSelectorInteraction() {
@@ -150,16 +135,11 @@ export const Main = () => {
             onChangeColorSelector({ x: localX, y: localY });
           }
 
-          const [r, g, b] = getRgbFromCanvas(
-            hueAsRgb,
-            localX,
-            localY,
-            canvas.width,
-            canvas.height
-          );
+          const s = Math.round((localX / canvas.width) * 100);
+          const v = Math.round(100 - (localY / canvas.height) * 100);
 
           if (onChangeMainColor) {
-            onChangeMainColor([r, g, b]);
+            onChangeMainColor([hsv[0], s, v]);
           }
         }
       }
@@ -194,8 +174,12 @@ export const Main = () => {
         document.removeEventListener("mouseup", handleMouseUpMain);
       };
     },
-    [hueAsRgb, isMouseDown]
+    [hsv, isMouseDown]
   );
+
+  const rgb = useMemo(() => {
+    return hsvToRgb(hsv);
+  }, [hsv]);
 
   return (
     <div className="relative mb-4">
@@ -205,7 +189,7 @@ export const Main = () => {
           top: colorSelector.y,
           left: colorSelector.x,
           transform: "translate(-50%, -50%)",
-          background: `rgb(${color[0]}, ${color[1]}, ${color[2]})`,
+          background: `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`,
         }}
         className="absolute w-3.5 h-3.5 border-2 border-white rounded-full"
       />
@@ -220,7 +204,7 @@ export const Main = () => {
 };
 
 export const Hue = () => {
-  const { hueSelectorX, onHueChange } = useColor();
+  const { hueSelectorX, onHueChange, hsv } = useColor();
   const [isMouseDown, setMouseDown] = useState(false);
 
   const hueCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -246,10 +230,10 @@ export const Hue = () => {
             e.clientX - (hueSelectorEl?.parentElement?.offsetLeft ?? 0);
           localX = minmax(localX, 0, canvas.width);
 
-          const hue = getHue(localX, canvas.width);
+          const h = Math.round((localX / canvas.width) * 360);
 
           if (onHueChange) {
-            onHueChange(hue, localX);
+            onHueChange([h, hsv[1], hsv[2]], localX);
           }
         }
       }
@@ -284,7 +268,7 @@ export const Hue = () => {
         document.removeEventListener("mouseup", handleMouseUpHue);
       };
     },
-    [isMouseDown]
+    [isMouseDown, hsv]
   );
 
   return (
@@ -314,26 +298,26 @@ export const Hue = () => {
 };
 
 export const Input = () => {
-  const { color, onChangeInput } = useColor();
+  const { onChangeInput, hsv, rgb } = useColor();
 
   const [mode, setMode] = useState<"hex" | "rgb" | "hsv">("hex");
-  const [hex, setHex] = useState("ffffff");
+  const [localHex, setLocalHex] = useState("#ffffff");
+  const [isEditHex, setEditHex] = useState(false);
 
-  const hsv = useMemo(() => {
-    return rgbToHsv(color);
-  }, [color]);
+  const hex = useMemo(() => {
+    return rgbToHex(rgb);
+  }, [rgb]);
 
   const handleChangeRgb = (value: string, index: 0 | 1 | 2) => {
     let valueAsNum = parseInt(value || "0");
     valueAsNum = isNaN(valueAsNum) ? 255 : valueAsNum;
     valueAsNum = minmax(valueAsNum, 0, 255);
 
-    const newRgb: RGB = [...color];
+    const newRgb: RGB = hsvToRgb(hsv);
     newRgb[index] = valueAsNum;
-    const hsv = rgbToHsv(newRgb);
 
     if (onChangeInput) {
-      onChangeInput(hsv, newRgb);
+      onChangeInput(rgbToHsv(newRgb), newRgb);
     }
   };
 
@@ -355,22 +339,36 @@ export const Input = () => {
     }
   };
 
+  const handleFinishChangeHex = () => {
+    setEditHex(false);
+    const rgb = hexToRgb(localHex);
+
+    if (onChangeInput) {
+      if (rgb) {
+        onChangeInput(rgbToHsv(rgb), rgb);
+      } else {
+        const fallbackHsv: HSV = [hsv[0], 100, 100];
+        onChangeInput(fallbackHsv, hsvToRgb(fallbackHsv));
+      }
+    }
+  };
+
   function renderInput() {
     if (mode === "rgb") {
       return (
         <div className="grid grid-cols-3 items-center gap-1 w-40">
           <input
-            value={color[0]}
+            value={rgb[0]}
             onChange={(e) => handleChangeRgb(e.target.value, 0)}
             className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
           />
           <input
-            value={color[1]}
+            value={rgb[1]}
             onChange={(e) => handleChangeRgb(e.target.value, 1)}
             className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
           />
           <input
-            value={color[2]}
+            value={rgb[2]}
             onChange={(e) => handleChangeRgb(e.target.value, 2)}
             className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
           />
@@ -382,8 +380,16 @@ export const Input = () => {
       return (
         <div className="w-40">
           <input
-            value={rgbToHex(color).substring(1).toUpperCase()}
+            value={isEditHex ? localHex : hex.substring(1).toUpperCase()}
             className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+            onFocus={() => {
+              setEditHex(true);
+              setLocalHex(hex.substring(1).toUpperCase());
+            }}
+            onChange={(e) => {
+              setLocalHex(e.target.value);
+            }}
+            onBlur={handleFinishChangeHex}
           />
         </div>
       );

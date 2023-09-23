@@ -1,77 +1,5 @@
 import { HSV, RGB } from "./types";
 
-export function getRgbFromCanvas(
-  hue: RGB,
-  x: number,
-  y: number,
-  canvasW: number,
-  canvasH: number
-): RGB {
-  const MIN = 0;
-  const MAX = 255;
-  const whiteOpacity = (canvasW - x) / canvasW;
-  const blackOpacity = y / canvasH;
-  const whiteChannel = Math.round(whiteOpacity * 255);
-  const blackChannel = Math.round(blackOpacity * 0);
-
-  return hue.map((color) => {
-    let c = Math.round(color * (1 - whiteOpacity)) + whiteChannel;
-    c = Math.round(c * (1 - blackOpacity)) + blackChannel;
-
-    c = Math.min(c, MAX);
-
-    return c < MIN ? MIN : c;
-  }) as RGB;
-}
-
-export function getHue(x: number, canvasW: number): RGB {
-  const position = x / canvasW;
-
-  // Purple
-  if (position >= 0 && position <= 0.15) {
-    const multiplier = position / 0.15;
-
-    return [255, 0, Math.round(multiplier * 255)];
-  }
-
-  // Blue
-  if (position >= 0.15 && position <= 0.33) {
-    const multiplier = 1 - (position - 0.15) / (0.33 - 0.15);
-
-    return [Math.round(multiplier * 255), 0, 255];
-  }
-
-  // Teal
-  if (position >= 0.33 && position <= 0.49) {
-    const multiplier = (position - 0.33) / (0.49 - 0.33);
-
-    return [0, Math.round(multiplier * 255), 255];
-  }
-
-  // Green
-  if (position >= 0.49 && position <= 0.67) {
-    const multiplier = 1 - (position - 0.49) / (0.67 - 0.49);
-
-    return [0, 255, Math.round(multiplier * 255)];
-  }
-
-  // Yellow
-  if (position >= 0.67 && position <= 0.84) {
-    const multiplier = (position - 0.67) / (0.84 - 0.67);
-
-    return [Math.round(multiplier * 255), 255, 0];
-  }
-
-  // Orange
-  if (position >= 0.84 && position <= 1) {
-    const multiplier = 1 - (position - 0.84) / (1 - 0.84);
-
-    return [255, Math.round(multiplier * 255), 0];
-  }
-
-  return [255, 0, 0];
-}
-
 export function rgbToHsv(rgb: RGB): HSV {
   const [r, g, b] = rgb;
   const max = Math.max(r, g, b);
@@ -178,19 +106,19 @@ export function drawHue(canvas: HTMLCanvasElement) {
 
   if (ctx) {
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    // Red
+    // Orange
     gradient.addColorStop(0, "rgb(255, 0, 0)");
-    // Purple
-    gradient.addColorStop(0.15, "rgb(255, 0, 255)");
-    // Blue
-    gradient.addColorStop(0.33, "rgb(0, 0, 255)");
+    // Yellow
+    gradient.addColorStop(0.15, "rgb(255, 255, 0)");
+    // Green
+    gradient.addColorStop(0.33, "rgb(0, 255, 0)");
     // Teal
     gradient.addColorStop(0.49, "rgb(0, 255, 255)");
-    // Green
-    gradient.addColorStop(0.67, "rgb(0, 255, 0)");
-    // Yellow
-    gradient.addColorStop(0.84, "rgb(255, 255, 0)");
-    // Orange
+    // Blue
+    gradient.addColorStop(0.67, "rgb(0, 0, 255)");
+    // Purple
+    gradient.addColorStop(0.84, "rgb(255, 0, 255)");
+    // Red
     gradient.addColorStop(1, "rgb(255, 0, 0)");
 
     ctx.fillStyle = gradient;
@@ -234,8 +162,8 @@ export function hexToRgb(hex: string): RGB | null {
 
   // Parse the hex values for red, green, and blue
   const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 2), 16);
-  const b = parseInt(hex.substring(4, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
 
   return [r, g, b];
 }
