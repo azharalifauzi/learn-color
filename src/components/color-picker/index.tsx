@@ -1,278 +1,433 @@
-import { useEffect, useRef, useState } from 'react'
-import { RGB, getHue, getRgbFromCanvas, hsvToRgb, rgbToHsv } from './helper'
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  drawHue,
+  drawMain,
+  getHue,
+  getRgbFromCanvas,
+  hsvToRgb,
+  minmax,
+  rgbToHex,
+  rgbToHsv,
+} from "./helper";
+import { ColorPickerContext, useColor } from "./hooks";
+import { HSV, RGB } from "./types";
 
 interface ColorPickerProps {
-  color?: [number, number, number]
-  onChange?: (color: [number, number, number]) => void
+  color?: [number, number, number];
+  onChange?: (color: [number, number, number]) => void;
+  children?: React.ReactNode;
 }
 
-const CANVAS_WIDTH = 288
-const CANVAS_HEIGHT = 256
+const CANVAS_WIDTH = 288;
+const CANVAS_HEIGHT = 256;
+const HUE_WIDTH = 220;
 
-const ColorPicker: React.FC<ColorPickerProps> = ({ onChange, color }) => {
-  const [localColor, setLocalColor] = useState<RGB>([255, 255, 255])
-  const [hue, setHue] = useState<RGB>([255, 0, 0])
-  const [hueSelectorX, setHueSelectorX] = useState(0)
-  const [colorSelector, setColorSelector] = useState({ x: 0, y: 0 })
-  const [isMouseDownMain, setMouseDownMain] = useState(false)
-  const [isMouseDownHue, setMouseDownHue] = useState(false)
+const ColorPicker: React.FC<ColorPickerProps> = ({
+  onChange,
+  color,
+  children,
+}) => {
+  const [localColor, setLocalColor] = useState<RGB>([255, 255, 255]);
+  const [hue, setHue] = useState<RGB>([255, 0, 0]);
+  const [hueSelectorX, setHueSelectorX] = useState(0);
+  const [colorSelector, setColorSelector] = useState({ x: 0, y: 0 });
 
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const hueCanvasRef = useRef<HTMLCanvasElement>(null)
-  const hueSelectorRef = useRef<HTMLDivElement>(null)
-  const colorSelectorRef = useRef<HTMLDivElement>(null)
-
-  const firstTime = useRef(true)
+  const firstTime = useRef(true);
 
   useEffect(() => {
     if (color && firstTime.current) {
-      setLocalColor(color)
+      setLocalColor(color);
 
-      const hsv = rgbToHsv(color)
+      const hsv = rgbToHsv(color);
 
       setColorSelector({
         x: (hsv[1] / 100) * CANVAS_WIDTH,
-        y: (1 - hsv[2] / 100) * CANVAS_HEIGHT
-      })
+        y: (1 - hsv[2] / 100) * CANVAS_HEIGHT,
+      });
 
-      setHueSelectorX((1 - hsv[0] / 360) * CANVAS_WIDTH)
-      setHue(hsvToRgb([hsv[0], 100, 100]))
+      setHueSelectorX((1 - hsv[0] / 360) * HUE_WIDTH);
+      setHue(hsvToRgb([hsv[0], 100, 100]));
 
-      firstTime.current = false
+      firstTime.current = false;
     }
-  }, [color])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext('2d', { willReadFrequently: true })
-
-    /**
-     * Main color picker
-     */
-    function drawMainColor() {
-      if (canvas && ctx) {
-        ctx.fillStyle = `rgb(${hue[0]}, ${hue[1]}, ${hue[2]})`
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-        const whiteGradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
-        whiteGradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
-        whiteGradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
-
-        ctx.fillStyle = whiteGradient
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-        const blackGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-        blackGradient.addColorStop(0, 'rgba(0, 0, 0, 0)')
-        blackGradient.addColorStop(1, 'rgba(0, 0, 0, 1)')
-
-        ctx.fillStyle = blackGradient
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-      }
-    }
-
-    drawMainColor()
-
-    const hueCanvas = hueCanvasRef.current
-    const hueCtx = hueCanvas?.getContext('2d', { willReadFrequently: true })
-
-    /**
-     * Hue color
-     */
-    function drawHue() {
-      if (hueCanvas && hueCtx) {
-        const gradient = hueCtx.createLinearGradient(0, 0, hueCanvas.width, 0)
-        // Red
-        gradient.addColorStop(0, 'rgb(255, 0, 0)')
-        // Purple
-        gradient.addColorStop(0.15, 'rgb(255, 0, 255)')
-        // Blue
-        gradient.addColorStop(0.33, 'rgb(0, 0, 255)')
-        // Teal
-        gradient.addColorStop(0.49, 'rgb(0, 255, 255)')
-        // Green
-        gradient.addColorStop(0.67, 'rgb(0, 255, 0)')
-        // Yellow
-        gradient.addColorStop(0.84, 'rgb(255, 255, 0)')
-        // Orange
-        gradient.addColorStop(1, 'rgb(255, 0, 0)')
-
-        hueCtx.fillStyle = gradient
-        hueCtx.fillRect(0, 0, hueCanvas.width, hueCanvas.height)
-      }
-    }
-
-    drawHue()
-
-    function updateHueSelectorCoord(e: MouseEvent) {
-      if (hueCanvas && hueCtx && ctx && canvas) {
-        // Center of circle
-        const minX = 0
-        const maxX = hueCanvas.width
-
-        let localX = e.clientX - (hueSelectorEl?.parentElement?.offsetLeft ?? 0)
-
-        localX = Math.min(maxX, localX)
-        localX = localX < minX ? minX : localX
-
-        setHueSelectorX(localX)
-        const hue = getHue(localX, canvas.width)
-        const color = getRgbFromCanvas(
-          hue,
-          colorSelector.x,
-          colorSelector.y,
-          canvas.width,
-          canvas.height
-        )
-
-        setLocalColor([color[0], color[1], color[2]])
-        setHue(hue)
-        drawMainColor()
-
-        if (onChange) {
-          onChange([color[0], color[1], color[2]])
-        }
-      }
-    }
-
-    function updateColorSelectorCoord(e: MouseEvent) {
-      let localX =
-        e.clientX - (colorSelectorRef.current?.parentElement?.offsetLeft ?? 0)
-      let localY =
-        e.clientY - (colorSelectorRef.current?.parentElement?.offsetTop ?? 0)
-
-      if (canvas && ctx) {
-        const minX = 0
-        const maxX = canvas.width
-        const minY = 0
-        const maxY = canvas.height
-
-        localX = Math.min(maxX, localX)
-        localY = Math.min(maxY, localY)
-
-        localX = localX < minX ? minX : localX
-        localY = localY < minY ? minY : localY
-
-        setColorSelector({ x: localX, y: localY })
-        const [r, g, b] = getRgbFromCanvas(
-          hue,
-          localX,
-          localY,
-          canvas.width,
-          canvas.height
-        )
-
-        setLocalColor([r, g, b])
-
-        if (onChange) {
-          onChange([r, g, b])
-        }
-      }
-    }
-
-    function handleMouseDownMain(e: MouseEvent) {
-      setMouseDownMain(true)
-      updateColorSelectorCoord(e)
-    }
-
-    function handleMouseMoveMain(e: MouseEvent) {
-      if (isMouseDownMain) {
-        updateColorSelectorCoord(e)
-      }
-    }
-
-    function handleMouseUpMain() {
-      setMouseDownMain(false)
-    }
-
-    function handleMouseDownHue(e: MouseEvent) {
-      setMouseDownHue(true)
-      updateHueSelectorCoord(e)
-    }
-
-    function handleMouseMoveHue(e: MouseEvent) {
-      if (isMouseDownHue) {
-        updateHueSelectorCoord(e)
-      }
-    }
-
-    function handleMouseUpHue() {
-      setMouseDownHue(false)
-    }
-
-    const hueSelectorEl = hueSelectorRef.current
-    const mainSelectorEl = colorSelectorRef.current
-
-    if (canvas && mainSelectorEl) {
-      canvas.addEventListener('mousedown', handleMouseDownMain)
-      mainSelectorEl.addEventListener('mousedown', handleMouseDownMain)
-    }
-
-    if (hueSelectorEl && hueCanvas) {
-      hueSelectorEl.addEventListener('mousedown', handleMouseDownHue)
-      hueCanvas.addEventListener('mousedown', handleMouseDownHue)
-    }
-
-    document.addEventListener('mousemove', handleMouseMoveHue)
-    document.addEventListener('mousemove', handleMouseMoveMain)
-    document.addEventListener('mouseup', handleMouseUpHue)
-    document.addEventListener('mouseup', handleMouseUpMain)
-
-    return () => {
-      hueSelectorEl?.removeEventListener('mousedown', handleMouseDownHue)
-      hueCanvas?.removeEventListener('mousedown', handleMouseDownHue)
-      canvas?.removeEventListener('mousedown', handleMouseDownMain)
-      mainSelectorEl?.removeEventListener('mousedown', handleMouseDownMain)
-      document.removeEventListener('mousemove', handleMouseMoveHue)
-      document.removeEventListener('mousemove', handleMouseMoveMain)
-      document.removeEventListener('mouseup', handleMouseUpHue)
-      document.removeEventListener('mouseup', handleMouseUpMain)
-    }
-  }, [colorSelector, isMouseDownMain, hue, isMouseDownHue, onChange])
+  }, [color]);
 
   return (
-    <div className="w-72 select-none">
-      <div className="relative mb-4">
-        <div
-          ref={colorSelectorRef}
-          style={{
-            top: colorSelector.y,
-            left: colorSelector.x,
-            transform: 'translate(-50%, -50%)',
-            background: `rgb(${localColor[0]}, ${localColor[1]}, ${localColor[2]})`
-          }}
-          className="absolute w-3.5 h-3.5 border-2 border-white rounded-full"
-        />
+    <ColorPickerContext.Provider
+      value={{
+        colorSelector,
+        hueSelectorX,
+        color: localColor,
+        hueAsRgb: hue,
+        onChangeColorSelector: (coord) => setColorSelector(coord),
+        onChangeMainColor: (color) => {
+          setLocalColor(color);
+
+          if (onChange) {
+            onChange(color);
+          }
+        },
+        onHueChange: (hueAsRgb, coordX) => {
+          setHue(hueAsRgb);
+          setHueSelectorX(coordX);
+
+          const rgb = getRgbFromCanvas(
+            hueAsRgb,
+            colorSelector.x,
+            colorSelector.y,
+            CANVAS_WIDTH,
+            CANVAS_HEIGHT
+          );
+
+          setLocalColor(rgb);
+
+          if (onChange) {
+            onChange(rgb);
+          }
+        },
+        onChangeInput: (hsv, rgb) => {
+          const [h, s, v] = hsv;
+
+          setLocalColor(rgb);
+
+          setColorSelector({
+            x: (s / 100) * CANVAS_WIDTH,
+            y: (1 - v / 100) * CANVAS_HEIGHT,
+          });
+          setHueSelectorX((1 - h / 360) * HUE_WIDTH);
+          setHue(hsvToRgb([h, 100, 100]));
+
+          if (onChange) {
+            onChange(rgb);
+          }
+        },
+      }}
+    >
+      <div className="w-72 select-none">{children}</div>
+    </ColorPickerContext.Provider>
+  );
+};
+
+export const Main = () => {
+  const {
+    color,
+    colorSelector,
+    hueAsRgb,
+    onChangeColorSelector,
+    onChangeMainColor,
+  } = useColor();
+
+  const [isMouseDown, setMouseDown] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colorSelectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (canvas) {
+      drawMain(canvas, hueAsRgb);
+    }
+  }, [hueAsRgb, colorSelector]);
+
+  useEffect(
+    function colorSelectorInteraction() {
+      const mainSelectorEl = colorSelectorRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d", { willReadFrequently: true });
+
+      function updateColorSelectorCoord(e: MouseEvent) {
+        let localX =
+          e.clientX -
+          (colorSelectorRef.current?.parentElement?.offsetLeft ?? 0);
+        let localY =
+          e.clientY - (colorSelectorRef.current?.parentElement?.offsetTop ?? 0);
+
+        if (canvas && ctx) {
+          localX = minmax(localX, 0, canvas.width);
+          localY = minmax(localY, 0, canvas.height);
+
+          if (onChangeColorSelector) {
+            onChangeColorSelector({ x: localX, y: localY });
+          }
+
+          const [r, g, b] = getRgbFromCanvas(
+            hueAsRgb,
+            localX,
+            localY,
+            canvas.width,
+            canvas.height
+          );
+
+          if (onChangeMainColor) {
+            onChangeMainColor([r, g, b]);
+          }
+        }
+      }
+
+      function handleMouseDownMain(e: MouseEvent) {
+        setMouseDown(true);
+        updateColorSelectorCoord(e);
+      }
+
+      function handleMouseMoveMain(e: MouseEvent) {
+        if (isMouseDown) {
+          updateColorSelectorCoord(e);
+        }
+      }
+
+      function handleMouseUpMain() {
+        setMouseDown(false);
+      }
+
+      if (canvas && mainSelectorEl) {
+        canvas.addEventListener("mousedown", handleMouseDownMain);
+        mainSelectorEl.addEventListener("mousedown", handleMouseDownMain);
+      }
+
+      document.addEventListener("mousemove", handleMouseMoveMain);
+      document.addEventListener("mouseup", handleMouseUpMain);
+
+      return () => {
+        canvas?.removeEventListener("mousedown", handleMouseDownMain);
+        mainSelectorEl?.removeEventListener("mousedown", handleMouseDownMain);
+        document.removeEventListener("mousemove", handleMouseMoveMain);
+        document.removeEventListener("mouseup", handleMouseUpMain);
+      };
+    },
+    [hueAsRgb, isMouseDown]
+  );
+
+  return (
+    <div className="relative mb-4">
+      <div
+        ref={colorSelectorRef}
+        style={{
+          top: colorSelector.y,
+          left: colorSelector.x,
+          transform: "translate(-50%, -50%)",
+          background: `rgb(${color[0]}, ${color[1]}, ${color[2]})`,
+        }}
+        className="absolute w-3.5 h-3.5 border-2 border-white rounded-full"
+      />
+      <canvas
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        className="w-full h-64"
+        ref={canvasRef}
+      />
+    </div>
+  );
+};
+
+export const Hue = () => {
+  const { hueSelectorX, onHueChange } = useColor();
+  const [isMouseDown, setMouseDown] = useState(false);
+
+  const hueCanvasRef = useRef<HTMLCanvasElement>(null);
+  const hueSelectorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = hueCanvasRef.current;
+
+    if (canvas) {
+      drawHue(canvas);
+    }
+  }, []);
+
+  useEffect(
+    function hueSelectorInteraction() {
+      const canvas = hueCanvasRef.current;
+      const ctx = canvas?.getContext("2d", { willReadFrequently: true });
+      const hueSelectorEl = hueSelectorRef.current;
+
+      function updateHueSelectorCoord(e: MouseEvent) {
+        if (canvas && ctx) {
+          let localX =
+            e.clientX - (hueSelectorEl?.parentElement?.offsetLeft ?? 0);
+          localX = minmax(localX, 0, canvas.width);
+
+          const hue = getHue(localX, canvas.width);
+
+          if (onHueChange) {
+            onHueChange(hue, localX);
+          }
+        }
+      }
+
+      function handleMouseDownHue(e: MouseEvent) {
+        setMouseDown(true);
+        updateHueSelectorCoord(e);
+      }
+
+      function handleMouseMoveHue(e: MouseEvent) {
+        if (isMouseDown) {
+          updateHueSelectorCoord(e);
+        }
+      }
+
+      function handleMouseUpHue() {
+        setMouseDown(false);
+      }
+
+      if (hueSelectorEl && canvas) {
+        hueSelectorEl.addEventListener("mousedown", handleMouseDownHue);
+        canvas.addEventListener("mousedown", handleMouseDownHue);
+      }
+
+      document.addEventListener("mousemove", handleMouseMoveHue);
+      document.addEventListener("mouseup", handleMouseUpHue);
+
+      return () => {
+        hueSelectorEl?.removeEventListener("mousedown", handleMouseDownHue);
+        canvas?.removeEventListener("mousedown", handleMouseDownHue);
+        document.removeEventListener("mousemove", handleMouseMoveHue);
+        document.removeEventListener("mouseup", handleMouseUpHue);
+      };
+    },
+    [isMouseDown]
+  );
+
+  return (
+    <div
+      style={{ width: HUE_WIDTH }}
+      className="h-3 rounded-full relative mb-4 ml-auto mr-2"
+    >
+      <div
+        ref={hueSelectorRef}
+        style={{
+          top: "50%",
+          left: hueSelectorX,
+          transform: "translate(-50%, -50%)",
+        }}
+        className="absolute w-4 h-4 bg-white rounded-full shadow-md"
+      />
+      <div className="h-full rounded-full overflow-hidden">
         <canvas
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="w-full h-64"
-          ref={canvasRef}
+          width={HUE_WIDTH}
+          height="16"
+          className="w-full h-4"
+          ref={hueCanvasRef}
         />
-      </div>
-      <div className="h-3 rounded-full relative">
-        <div
-          ref={hueSelectorRef}
-          style={{
-            top: '50%',
-            left: hueSelectorX,
-            transform: 'translate(-50%, -50%)'
-          }}
-          className="absolute w-4 h-4 bg-white rounded-full shadow-md"
-        />
-        <div className="h-full rounded-full overflow-hidden">
-          <canvas
-            width={CANVAS_WIDTH}
-            height="16"
-            className="w-full h-4"
-            ref={hueCanvasRef}
-          />
-        </div>
-      </div>
-      <div className="mt-4 text-sm">
-        rgb({localColor[0]}, {localColor[1]}, {localColor[2]})
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ColorPicker
+export const Input = () => {
+  const { color, onChangeInput } = useColor();
+
+  const [mode, setMode] = useState<"hex" | "rgb" | "hsv">("hex");
+  const [hex, setHex] = useState("ffffff");
+
+  const hsv = useMemo(() => {
+    return rgbToHsv(color);
+  }, [color]);
+
+  const handleChangeRgb = (value: string, index: 0 | 1 | 2) => {
+    let valueAsNum = parseInt(value || "0");
+    valueAsNum = isNaN(valueAsNum) ? 255 : valueAsNum;
+    valueAsNum = minmax(valueAsNum, 0, 255);
+
+    const newRgb: RGB = [...color];
+    newRgb[index] = valueAsNum;
+    const hsv = rgbToHsv(newRgb);
+
+    if (onChangeInput) {
+      onChangeInput(hsv, newRgb);
+    }
+  };
+
+  const handleChangeHsv = (value: string, index: 0 | 1 | 2) => {
+    let valueAsNum = parseInt(value || "0");
+    valueAsNum = isNaN(valueAsNum) ? 255 : valueAsNum;
+
+    if (index === 0) {
+      valueAsNum = minmax(valueAsNum, 0, 360);
+    } else {
+      valueAsNum = minmax(valueAsNum, 0, 100);
+    }
+
+    const newHsv: HSV = [...hsv];
+    newHsv[index] = valueAsNum;
+
+    if (onChangeInput) {
+      onChangeInput(newHsv, hsvToRgb(newHsv));
+    }
+  };
+
+  function renderInput() {
+    if (mode === "rgb") {
+      return (
+        <div className="grid grid-cols-3 items-center gap-1 w-40">
+          <input
+            value={color[0]}
+            onChange={(e) => handleChangeRgb(e.target.value, 0)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+          <input
+            value={color[1]}
+            onChange={(e) => handleChangeRgb(e.target.value, 1)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+          <input
+            value={color[2]}
+            onChange={(e) => handleChangeRgb(e.target.value, 2)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+        </div>
+      );
+    }
+
+    if (mode === "hex") {
+      return (
+        <div className="w-40">
+          <input
+            value={rgbToHex(color).substring(1).toUpperCase()}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+        </div>
+      );
+    }
+
+    if (mode === "hsv") {
+      return (
+        <div className="grid grid-cols-3 items-center gap-1 w-40">
+          <input
+            value={hsv[0]}
+            onChange={(e) => handleChangeHsv(e.target.value, 0)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+          <input
+            value={hsv[1].toFixed(0)}
+            onChange={(e) => handleChangeHsv(e.target.value, 1)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+          <input
+            value={hsv[2].toFixed(0)}
+            onChange={(e) => handleChangeHsv(e.target.value, 2)}
+            className="w-full outline-none border border-gray-200 px-2 py-1.5 text-xs"
+          />
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-2 px-2">
+      <select
+        value={mode}
+        onChange={(e) => setMode(e.target.value as "hex" | "rgb" | "hsv")}
+        className="text-sm bg-transparent hover:outline hover:outline-1 outline-gray-200 py-1 w-16 px-1"
+      >
+        <option value="hex">Hex</option>
+        <option value="rgb">RGB</option>
+        <option value="hsv">HSV</option>
+      </select>
+      {renderInput()}
+    </div>
+  );
+};
+
+export default ColorPicker;
